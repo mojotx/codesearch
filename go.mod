@@ -1,3 +1,3 @@
-module github.com/google/codesearch
+module github.com/mojotx/codesearch
 
-go 1.13
+go 1.16

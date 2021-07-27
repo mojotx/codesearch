@@ -13,7 +13,7 @@ import (
 	"runtime/pprof"
 	"sort"
 
-	"github.com/google/codesearch/index"
+	"github.com/mojotx/codesearch/index"
 )
 
 var usageMessage = `usage: cindex [-list] [-reset] [path...]
@@ -49,7 +49,7 @@ With no path arguments, cindex -reset removes the index.
 `
 
 func usage() {
-	fmt.Fprintf(os.Stderr, usageMessage)
+	_, _ = fmt.Fprint(os.Stderr, usageMessage)
 	os.Exit(2)
 }
 
@@ -78,20 +78,20 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer f.Close()
-		pprof.StartCPUProfile(f)
+		defer func() {
+			_ = f.Close()
+		}()
+		_ = pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
 
 	if *resetFlag && len(args) == 0 {
-		os.Remove(index.File())
+		_ = os.Remove(index.File())
 		return
 	}
 	if len(args) == 0 {
 		ix := index.Open(index.File())
-		for _, arg := range ix.Paths() {
-			args = append(args, arg)
-		}
+		args = append(args, ix.Paths()...)
 	}
 
 	// Translate paths to absolute paths so that we can
@@ -126,10 +126,11 @@ func main() {
 	ix.AddPaths(args)
 	for _, arg := range args {
 		log.Printf("index %s", arg)
-		filepath.Walk(arg, func(path string, info os.FileInfo, err error) error {
+		_ = filepath.Walk(arg, func(path string, info os.FileInfo, err error) error {
 			if _, elem := filepath.Split(path); elem != "" {
 				// Skip various temporary or "hidden" files or directories.
 				if elem[0] == '.' || elem[0] == '#' || elem[0] == '~' || elem[len(elem)-1] == '~' {
+
 					if info.IsDir() {
 						return filepath.SkipDir
 					}
@@ -152,9 +153,8 @@ func main() {
 	if !*resetFlag {
 		log.Printf("merge %s %s", master, file)
 		index.Merge(file+"~", master, file)
-		os.Remove(file)
-		os.Rename(file+"~", master)
+		_ = os.Remove(file)
+		_ = os.Rename(file+"~", master)
 	}
 	log.Printf("done")
-	return
 }
