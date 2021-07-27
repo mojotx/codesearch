@@ -10,7 +10,9 @@ see http://swtch.com/~rsc/regexp/regexp4.html.
 
 To install my fork:
 
-	go get github.com/mojotx/codesearch/cmd/...
+```sh
+	go get github.com/mojotx/codesearch/cmd/...@index_dot_files
+```
 
 Use "go get -u" to update an existing installation.
 
