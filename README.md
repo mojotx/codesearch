@@ -1,3 +1,5 @@
+# Code Search
+
 This is a fork of the [Google Code Search](github.com/google/codesearch),
 that supports indexing dot files.
 
