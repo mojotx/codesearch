@@ -41,7 +41,7 @@ empty, $HOME/.csearchindex.
 `
 
 func usage() {
-	fmt.Fprintf(os.Stderr, usageMessage)
+	_, _ = fmt.Fprint(os.Stderr, usageMessage)
 	os.Exit(2)
 }
 
@@ -75,8 +75,10 @@ func Main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer f.Close()
-		pprof.StartCPUProfile(f)
+		defer func() {
+			_ = f.Close()
+		}()
+		_ = pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
 

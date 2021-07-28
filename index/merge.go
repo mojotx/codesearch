@@ -41,11 +41,6 @@ type idrange struct {
 	lo, hi, new uint32
 }
 
-type postIndex struct {
-	tri    uint32
-	count  uint32
-	offset uint32
-}
 
 // Merge creates a new index in the file dst that corresponds to merging
 // the two indices src1 and src2.  If both src1 and src2 claim responsibility
@@ -57,7 +52,7 @@ func Merge(dst, src1, src2 string) {
 	paths2 := ix2.Paths()
 
 	// Build docid maps.
-	var i1, i2, new uint32
+	var i1, i2, newI uint32
 	var map1, map2 []idrange
 	for _, path := range paths2 {
 		// Determine range shadowed by this path.
@@ -74,8 +69,8 @@ func Merge(dst, src1, src2 string) {
 
 		// Record range before the shadow.
 		if old < lo {
-			map1 = append(map1, idrange{old, lo, new})
-			new += lo - old
+			map1 = append(map1, idrange{old, lo, newI})
+			newI += lo - old
 		}
 
 		// Determine range defined by this path.
@@ -90,19 +85,19 @@ func Merge(dst, src1, src2 string) {
 		}
 		hi = i2
 		if lo < hi {
-			map2 = append(map2, idrange{lo, hi, new})
-			new += hi - lo
+			map2 = append(map2, idrange{lo, hi, newI})
+			newI += hi - lo
 		}
 	}
 
 	if i1 < uint32(ix1.numName) {
-		map1 = append(map1, idrange{i1, uint32(ix1.numName), new})
-		new += uint32(ix1.numName) - i1
+		map1 = append(map1, idrange{i1, uint32(ix1.numName), newI})
+		newI += uint32(ix1.numName) - i1
 	}
 	if i2 < uint32(ix2.numName) {
 		panic("merge: inconsistent index")
 	}
-	numName := new
+	numName := newI
 
 	ix3 := bufCreate(dst)
 	ix3.writeString(magic)
@@ -133,33 +128,33 @@ func Merge(dst, src1, src2 string) {
 	// Merged list of names.
 	nameData := ix3.offset()
 	nameIndexFile := bufCreate("")
-	new = 0
+	newI = 0
 	mi1 = 0
 	mi2 = 0
-	for new < numName {
-		if mi1 < len(map1) && map1[mi1].new == new {
+	for newI < numName {
+		if mi1 < len(map1) && map1[mi1].new == newI {
 			for i := map1[mi1].lo; i < map1[mi1].hi; i++ {
 				name := ix1.Name(i)
 				nameIndexFile.writeUint32(ix3.offset() - nameData)
 				ix3.writeString(name)
 				ix3.writeString("\x00")
-				new++
+				newI++
 			}
 			mi1++
-		} else if mi2 < len(map2) && map2[mi2].new == new {
+		} else if mi2 < len(map2) && map2[mi2].new == newI {
 			for i := map2[mi2].lo; i < map2[mi2].hi; i++ {
 				name := ix2.Name(i)
 				nameIndexFile.writeUint32(ix3.offset() - nameData)
 				ix3.writeString(name)
 				ix3.writeString("\x00")
-				new++
+				newI++
 			}
 			mi2++
 		} else {
 			panic("merge: inconsistent index")
 		}
 	}
-	if new*4 != nameIndexFile.offset() {
+	if newI*4 != nameIndexFile.offset() {
 		panic("merge: inconsistent index")
 	}
 	nameIndexFile.writeUint32(ix3.offset())
@@ -227,8 +222,8 @@ func Merge(dst, src1, src2 string) {
 	ix3.writeString(trailerMagic)
 	ix3.flush()
 
-	os.Remove(nameIndexFile.name)
-	os.Remove(w.postIndexFile.name)
+	_ = os.Remove(nameIndexFile.name)
+	_ = os.Remove(w.postIndexFile.name)
 }
 
 type postMapReader struct {
@@ -304,7 +299,7 @@ func (r *postMapReader) nextId() bool {
 type postDataWriter struct {
 	out           *bufWriter
 	postIndexFile *bufWriter
-	buf           [10]byte
+	// buf           [10]byte
 	base          uint32
 	count, offset uint32
 	last          uint32

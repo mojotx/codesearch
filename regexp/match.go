@@ -38,9 +38,9 @@ type flags uint32
 
 const (
 	flagBOL  flags = 1 << iota // beginning of line
-	flagEOL                    // end of line
+	// flagEOL                    // end of line
 	flagBOT                    // beginning of text
-	flagEOT                    // end of text
+	// flagEOT                    // end of text
 	flagWord                   // last byte was word byte
 )
 
@@ -212,44 +212,44 @@ func (m *matcher) computeNext(d *dstate, c int) *dstate {
 	this.dec(d.enc)
 
 	// compute flags in effect before c
-	flag := syntax.EmptyOp(0)
+	flagV:= syntax.EmptyOp(0)
 	if this.flag&flagBOL != 0 {
-		flag |= syntax.EmptyBeginLine
+		flagV |= syntax.EmptyBeginLine
 	}
 	if this.flag&flagBOT != 0 {
-		flag |= syntax.EmptyBeginText
+		flagV |= syntax.EmptyBeginText
 	}
 	if this.flag&flagWord != 0 {
 		if !isWordByte(c) {
-			flag |= syntax.EmptyWordBoundary
+			flagV |= syntax.EmptyWordBoundary
 		} else {
-			flag |= syntax.EmptyNoWordBoundary
+			flagV |= syntax.EmptyNoWordBoundary
 		}
 	} else {
 		if isWordByte(c) {
-			flag |= syntax.EmptyWordBoundary
+			flagV |= syntax.EmptyWordBoundary
 		} else {
-			flag |= syntax.EmptyNoWordBoundary
+			flagV |= syntax.EmptyNoWordBoundary
 		}
 	}
 	if c == '\n' {
-		flag |= syntax.EmptyEndLine
+		flagV |= syntax.EmptyEndLine
 	}
 	if c == endText {
-		flag |= syntax.EmptyEndLine | syntax.EmptyEndText
+		flagV |= syntax.EmptyEndLine | syntax.EmptyEndText
 	}
 
 	// re-expand queue using new flags.
 	// TODO: only do this when it matters
 	// (something is gating on word boundaries).
-	m.stepEmpty(&this.q, &next.q, flag)
+	m.stepEmpty(&this.q, &next.q, flagV)
 	this, next = next, this
 
 	// now compute flags after c.
-	flag = 0
+	flagV = 0
 	next.flag = 0
 	if c == '\n' {
-		flag |= syntax.EmptyBeginLine
+		flagV |= syntax.EmptyBeginLine
 		next.flag |= flagBOL
 	}
 	if isWordByte(c) {
@@ -257,7 +257,7 @@ func (m *matcher) computeNext(d *dstate, c int) *dstate {
 	}
 
 	// re-add start, process rune + expand according to flags.
-	if m.stepByte(&this.q, &next.q, c, flag) {
+	if m.stepByte(&this.q, &next.q, c, flagV) {
 		return &dmatch
 	}
 	return m.cache(next)
@@ -348,7 +348,6 @@ func isWordByte(c int) bool {
 		c == '_'
 }
 
-// TODO:
 type Grep struct {
 	Regexp *Regexp   // regexp to search for
 	Stdout io.Writer // output target
@@ -374,10 +373,12 @@ func (g *Grep) AddFlags() {
 func (g *Grep) File(name string) {
 	f, err := os.Open(name)
 	if err != nil {
-		fmt.Fprintf(g.Stderr, "%s\n", err)
+		_, _ = fmt.Fprintf(g.Stderr, "%s\n", err)
 		return
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 	g.Reader(f, name)
 }
 
@@ -433,7 +434,7 @@ func (g *Grep) Reader(r io.Reader, name string) {
 			}
 			g.Match = true
 			if g.L {
-				fmt.Fprintf(g.Stdout, "%s\n", name)
+				_, _ = fmt.Fprintf(g.Stdout, "%s\n", name)
 				return
 			}
 			lineStart := bytes.LastIndex(buf[chunkStart:m1], nl) + 1 + chunkStart
@@ -453,9 +454,9 @@ func (g *Grep) Reader(r io.Reader, name string) {
 			case g.C:
 				count++
 			case g.N:
-				fmt.Fprintf(g.Stdout, "%s%d:%s%s", prefix, lineno, line, nl)
+				_, _ = fmt.Fprintf(g.Stdout, "%s%d:%s%s", prefix, lineno, line, nl)
 			default:
-				fmt.Fprintf(g.Stdout, "%s%s%s", prefix, line, nl)
+				_, _ = fmt.Fprintf(g.Stdout, "%s%s%s", prefix, line, nl)
 			}
 			if needLineno {
 				lineno++
@@ -469,12 +470,12 @@ func (g *Grep) Reader(r io.Reader, name string) {
 		buf = buf[:n]
 		if len(buf) == 0 && err != nil {
 			if err != io.EOF && err != io.ErrUnexpectedEOF {
-				fmt.Fprintf(g.Stderr, "%s: %v\n", name, err)
+				_, _ = fmt.Fprintf(g.Stderr, "%s: %v\n", name, err)
 			}
 			break
 		}
 	}
 	if g.C && count > 0 {
-		fmt.Fprintf(g.Stdout, "%s: %d\n", name, count)
+		_, _ = fmt.Fprintf(g.Stdout, "%s: %d\n", name, count)
 	}
 }

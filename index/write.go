@@ -5,6 +5,7 @@
 package index
 
 import (
+	"bufio"
 	"io"
 	"io/ioutil"
 	"log"
@@ -42,7 +43,6 @@ type IndexWriter struct {
 	paths []string
 
 	nameData   *bufWriter // temp file holding list of names
-	nameLen    uint32     // number of bytes written to nameData
 	nameIndex  *bufWriter // temp file holding name index
 	numName    int        // number of names written
 	totalBytes int64
@@ -109,7 +109,9 @@ func (ix *IndexWriter) AddFile(name string) {
 		log.Print(err)
 		return
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 	ix.Add(name, f)
 }
 
@@ -117,8 +119,8 @@ func (ix *IndexWriter) AddFile(name string) {
 // It logs errors using package log.
 func (ix *IndexWriter) Add(name string, f io.Reader) {
 	ix.trigram.Reset()
+	var c byte
 	var (
-		c       = byte(0)
 		i       = 0
 		buf     = ix.inbuf[:0]
 		tv      = uint32(0)
@@ -217,12 +219,12 @@ func (ix *IndexWriter) Flush() {
 	}
 	ix.main.writeString(trailerMagic)
 
-	os.Remove(ix.nameData.name)
+	_ = os.Remove(ix.nameData.name)
 	for _, f := range ix.postFile {
-		os.Remove(f.Name())
+		_ = os.Remove(f.Name())
 	}
-	os.Remove(ix.nameIndex.name)
-	os.Remove(ix.postIndex.name)
+	_ = os.Remove(ix.nameIndex.name)
+	_ = os.Remove(ix.postIndex.name)
 
 	log.Printf("%d data bytes, %d index bytes", ix.totalBytes, ix.main.offset())
 
@@ -275,7 +277,7 @@ func (ix *IndexWriter) flushPost() {
 	}
 
 	ix.post = ix.post[:0]
-	w.Seek(0, 0)
+	_, _ = w.Seek(0, 0)
 	ix.postFile = append(ix.postFile, w)
 }
 
@@ -331,8 +333,6 @@ type postChunk struct {
 	m []postEntry // remaining entries after e
 }
 
-const postBuf = 4096
-
 // A postHeap is a heap (priority queue) of postChunks.
 type postHeap struct {
 	ch []*postChunk
@@ -348,23 +348,6 @@ func (h *postHeap) addMem(x []postEntry) {
 	h.add(&postChunk{m: x})
 }
 
-// step reads the next entry from ch and saves it in ch.e.
-// It returns false if ch is over.
-func (h *postHeap) step(ch *postChunk) bool {
-	old := ch.e
-	m := ch.m
-	if len(m) == 0 {
-		return false
-	}
-	ch.e = postEntry(m[0])
-	m = m[1:]
-	ch.m = m
-	if old >= ch.e {
-		panic("bad sort")
-	}
-	return true
-}
-
 // add adds the chunk to the postHeap.
 // All adds must be called before the first call to next.
 func (h *postHeap) add(ch *postChunk) {
@@ -375,10 +358,6 @@ func (h *postHeap) add(ch *postChunk) {
 	}
 }
 
-// empty reports whether the postHeap is empty.
-func (h *postHeap) empty() bool {
-	return len(h.ch) == 0
-}
 
 // next returns the next entry from the postHeap.
 // It returns a postEntry with trigram == 1<<24 - 1 if h is empty.
@@ -451,10 +430,10 @@ func (h *postHeap) siftUp(j int) {
 
 // A bufWriter is a convenience wrapper: a closeable bufio.Writer.
 type bufWriter struct {
+	bufio.Writer
 	name string
 	file *os.File
 	buf  []byte
-	tmp  [8]byte
 }
 
 // bufCreate creates a new file with the given name and returns a
@@ -540,7 +519,7 @@ func (b *bufWriter) flush() {
 func (b *bufWriter) finish() *os.File {
 	b.flush()
 	f := b.file
-	f.Seek(0, 0)
+	_, _ = f.Seek(0, 0)
 	return f
 }
 
