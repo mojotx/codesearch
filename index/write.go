@@ -10,13 +10,13 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/google/codesearch/sparse"
+	"github.com/rs/zerolog/log"
 )
 
 // Index writing.  See read.go for details of on-disk format.
@@ -109,7 +109,7 @@ func (p postEntry) trigram() uint32 {
 func (p postEntry) fileid() int {
 	id := uint64(p << 24 >> 24)
 	if uint64(int(id)) != id || int(id) < 0 {
-		log.Fatalf("more than 2^31 files on a 32-bit system")
+		log.Fatal().Msg("index is larger than 2^31 files on a 32-bit system")
 	}
 	return int(id)
 }
@@ -118,7 +118,7 @@ func makePostEntry(trigram uint32, fileid int) postEntry {
 	// Note that this encoding is known to the trigram and fileid method above,
 	// but also to sortPost below.
 	if fileid>>40 > 0 {
-		log.Fatalf("more than 2^40 files")
+		log.Fatal().Msg("more than 2^40 files")
 	}
 	return postEntry(trigram)<<40 | postEntry(fileid)
 }
@@ -366,7 +366,7 @@ func copyFile(dst, src *Buffer) {
 	dst.Flush()
 	n, err := io.Copy(dst.file, src.finish())
 	if err != nil {
-		log.Fatalf("copying %s to %s: %v", src.name, dst.name, err)
+		log.Fatal().Err(err).Str("src", src.name).Str("dst", dst.name).Msg("problem copying file")
 	}
 	dst.fileOff += n
 }
@@ -376,10 +376,10 @@ func copyFile(dst, src *Buffer) {
 func (ix *IndexWriter) addName(name Path) int {
 	if writeVersion == 2 {
 		if name.String() == "" {
-			log.Fatalf("index of empty name")
+			log.Fatal().Msg("index of empty name")
 		}
 		if name.Compare(ix.nameLast) <= 0 {
-			log.Fatalf("names not sorted: %q <= %q", name, ix.nameLast)
+			log.Fatal().Str("name", name.String()).Str("last", ix.nameLast.String()).Msg("names not sorted")
 		}
 	}
 
@@ -393,7 +393,7 @@ func (ix *IndexWriter) addName(name Path) int {
 // clears the slice.
 func (ix *IndexWriter) flushPost() {
 	if ix.Verbose {
-		log.Printf("flush %d entries to %v", len(ix.post), ix.postFile.name)
+		log.Info().Msgf("flush %d entries to %v", len(ix.post), ix.postFile.name)
 	}
 	sortPost(ix.post)
 
@@ -612,7 +612,7 @@ func bufCreate(name string) *Buffer {
 		f, err = os.CreateTemp("", "csearch")
 	}
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err).Str("name", name).Msg("failed to create file")
 	}
 	return &Buffer{
 		name: f.Name(),
@@ -627,7 +627,7 @@ func (b *Buffer) Write(x []byte) {
 		b.Flush()
 		if b.file != nil && len(x) >= cap(b.buf) {
 			if _, err := b.file.Write(x); err != nil {
-				log.Fatalf("writing %s: %v", b.name, err)
+				log.Fatal().Err(err).Str("name", b.name).Msg("failed to write file")
 			}
 			b.fileOff += int64(len(x))
 			return
@@ -650,7 +650,7 @@ func (b *Buffer) WriteString(s string) {
 		b.Flush()
 		if len(s) >= cap(b.buf) {
 			if _, err := b.file.WriteString(s); err != nil {
-				log.Fatalf("writing %s: %v", b.name, err)
+				log.Fatal().Err(err).Str("string", s).Msg("failed to write string")
 			}
 			b.fileOff += int64(len(s))
 			return
@@ -663,7 +663,7 @@ func (b *Buffer) WriteString(s string) {
 func (b *Buffer) Offset() int {
 	off := b.fileOff + int64(len(b.buf))
 	if int64(int(off)) != off {
-		log.Fatalf("index is larger than 2GB on 32-bit system")
+		log.Fatal().Msg("index is larger than 2GB on 32-bit system")
 	}
 	return int(off)
 }
@@ -674,10 +674,10 @@ func (b *Buffer) Flush() {
 	}
 	n, err := b.file.Write(b.buf)
 	if err != nil {
-		log.Fatalf("writing %s: %v", b.name, err)
+		log.Fatal().Err(err).Str("name", b.name).Msg("failed to write file")
 	}
 	if n != len(b.buf) {
-		log.Fatalf("writing %s: unexpected short write", b.name)
+		log.Fatal().Str("filename", b.name).Msg("unexpected short write")
 	}
 	b.fileOff += int64(len(b.buf))
 	b.buf = b.buf[:0]
@@ -700,7 +700,7 @@ func (b *Buffer) WriteTrigram(t uint32) {
 
 func (b *Buffer) WriteVarint(x int) {
 	if x < 0 {
-		log.Fatalf("writeUvarint of negative number")
+		log.Fatal().Msg("writeUvarint of negative number")
 	}
 	if cap(b.buf)-len(b.buf) < binary.MaxVarintLen64 {
 		b.Flush()
@@ -718,7 +718,7 @@ func (b *Buffer) WriteUint(x int) {
 
 func (b *Buffer) writeUint32(x int) {
 	if x < 0 || int(uint32(x)) != x {
-		log.Fatalf("index is larger than 2GB on 32-bit system")
+		log.Fatal().Msg("index is larger than 2^32 on 32-bit system")
 	}
 	if cap(b.buf)-len(b.buf) < 4 {
 		b.Flush()
@@ -728,7 +728,7 @@ func (b *Buffer) writeUint32(x int) {
 
 func (b *Buffer) writeUint64(x int) {
 	if x < 0 {
-		log.Fatalf("index is too large")
+		log.Fatal().Msg("writeUint64 of negative number")
 	}
 	if cap(b.buf)-len(b.buf) < 4 {
 		b.Flush()

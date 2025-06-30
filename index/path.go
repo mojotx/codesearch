@@ -87,7 +87,7 @@ func (w *PathWriter) Write(p Path) {
 			w.index.WriteUint(w.data.Offset() - w.start)
 		}
 		w.data.WriteString(p.s)
-		w.data.WriteByte(0)
+		_ = w.data.WriteByte(0)
 		return
 	}
 

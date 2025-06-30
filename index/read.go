@@ -20,8 +20,8 @@ package index
 // sequences of prefix-compressed paths. Each path is encoded
 // as a varint number of prefix bytes to copy from the previous
 // path, a varint number of suffix bytes that follow, and the
-// suffix bytes. For example, the two path sequnce
-// {"abcdef", "abcx"} is encoded as [0 6 abcdef 3 1 x].
+// suffix bytes. For example, the two path sequences
+// {"abcdef", "abcx"} are encoded as [0 6 abcdef 3 1 x].
 //
 // In the name list, every 16th name has a forced prefix
 // length of 0, so that random access is possible by starting
@@ -149,11 +149,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	"iter"
-	"log"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
+
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -463,8 +464,8 @@ func (r *postReader) next() bool {
 type allPostReader struct {
 	trigram uint32
 	fileid  int
-	is64    bool
-	delta   deltaReader
+	// is64    bool
+	delta deltaReader
 }
 
 func (r *allPostReader) init(ix *Index, data []byte) {
@@ -480,7 +481,7 @@ func (r *allPostReader) next() (postEntry, bool) {
 				return 0, false
 			}
 			if len(d) < 3 {
-				log.Fatalf("internal error: invalid temporary file")
+				log.Fatal().Msg("internal error: invalid temporary file")
 			}
 			r.trigram = uint32(d[0])<<16 | uint32(d[1])<<8 | uint32(d[2])
 			d = d[3:]
@@ -641,7 +642,7 @@ func (ix *Index) corrupt() {
 	if panicOnCorrupt {
 		panic("corrupt index")
 	}
-	log.Fatal("corrupt index: remove " + ix.name)
+	log.Fatal().Str("index", ix.name).Msg("corrupt index")
 }
 
 // An mmapData is mmap'ed read-only data from a file.
@@ -654,7 +655,7 @@ type mmapData struct {
 func mmap(file string) mmapData {
 	f, err := os.Open(file)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err).Msg("failed to open file")
 	}
 	return mmapFile(f)
 }

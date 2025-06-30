@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"html"
 	"io/fs"
-	"log"
 	"net/http"
 	"os"
 	"path"
@@ -23,17 +22,28 @@ import (
 
 	"github.com/google/codesearch/index"
 	"github.com/google/codesearch/regexp"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 var (
 	verboseFlag = flag.Bool("verbose", false, "print extra information")
 )
 
+func init() {
+	log.Logger = log.Output(zerolog.ConsoleWriter{
+		Out:        os.Stderr,
+		TimeFormat: time.RFC3339Nano,
+		NoColor:    false,
+	}).With().Caller().Logger()
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+}
+
 func main() {
 	http.HandleFunc("/", home)
 	http.Handle("/_static/", http.FileServer(http.FS(static)))
 	http.HandleFunc("/show/", show)
-	log.Fatal(http.ListenAndServe("localhost:2473", nil))
+	log.Error().Err(http.ListenAndServe("localhost:2473", nil)).Send()
 }
 
 //go:embed _static
@@ -41,7 +51,9 @@ var static embed.FS
 
 func home(w http.ResponseWriter, r *http.Request) {
 	qarg := r.FormValue("q")
-	w.Write([]byte(strings.ReplaceAll(homePage, "QUERY", html.EscapeString(qarg))))
+	if _, err := w.Write([]byte(strings.ReplaceAll(homePage, "QUERY", html.EscapeString(qarg)))); err != nil {
+		log.Error().Err(err).Msg("failed to write home page")
+	}
 	if qarg == "" {
 		return
 	}
@@ -190,7 +202,9 @@ func show(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		w.Write(serveDir(file, dirs))
+		if _, err := w.Write(serveDir(file, dirs)); err != nil {
+			log.Error().Err(err).Msg("failed to write directory listing")
+		}
 		return
 	}
 
@@ -199,7 +213,9 @@ func show(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	w.Write(serveFile(file, data))
+	if _, err := w.Write(serveFile(file, data)); err != nil {
+		log.Error().Err(err).Msg("failed to write file content")
+	}
 }
 
 func printHeader(buf *bytes.Buffer, file string) {

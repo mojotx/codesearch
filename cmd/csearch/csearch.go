@@ -9,13 +9,15 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"runtime/pprof"
 	"strings"
+	"time"
 
 	"github.com/google/codesearch/index"
 	"github.com/google/codesearch/regexp"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 var usageMessage = `usage: csearch [-c] [-f fileregexp] [-h] [-i] [-l] [-n] regexp
@@ -43,8 +45,17 @@ Csearch uses the index stored in $CSEARCHINDEX or, if that variable is unset or
 empty, $HOME/.csearchindex.
 `
 
+func init() {
+	log.Logger = log.Output(zerolog.ConsoleWriter{
+		Out:        os.Stderr,
+		TimeFormat: time.RFC3339Nano,
+		NoColor:    false,
+	}).With().Caller().Logger()
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+}
+
 func usage() {
-	fmt.Fprintf(os.Stderr, usageMessage)
+	fmt.Fprint(os.Stderr, usageMessage)
 	os.Exit(2)
 }
 
@@ -60,7 +71,6 @@ var (
 )
 
 func Main() {
-	log.SetPrefix("csearch: ")
 	g := regexp.Grep{
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
@@ -81,10 +91,12 @@ func Main() {
 	if *cpuProfile != "" {
 		f, err := os.Create(*cpuProfile)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal().Err(err).Msg("failed to create CPU profile file")
 		}
 		defer f.Close()
-		pprof.StartCPUProfile(f)
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatal().Err(err).Msg("failed to start CPU profile")
+		}
 		defer pprof.StopCPUProfile()
 	}
 
@@ -94,19 +106,19 @@ func Main() {
 	}
 	re, err := regexp.Compile(pat)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err).Msg("failed to compile regular expression")
 	}
 	g.Regexp = re
 	var fre *regexp.Regexp
 	if *fFlag != "" {
 		fre, err = regexp.Compile(*fFlag)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal().Err(err).Msg("failed to compile filename regular expression")
 		}
 	}
 	q := index.RegexpQuery(re.Syntax)
 	if *verboseFlag {
-		log.Printf("query: %s\n", q)
+		log.Info().Msgf("query: %s", q)
 	}
 
 	ix := index.Open(index.File())

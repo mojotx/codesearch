@@ -7,13 +7,15 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"runtime/pprof"
 	"slices"
+	"time"
 
 	"github.com/google/codesearch/index"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 var usageMessage = `usage: cindex [-list] [-reset] [-zip] [path...]
@@ -52,8 +54,17 @@ delete the existing index before indexing the new paths.
 With no path arguments, cindex -reset removes the index.
 `
 
+func init() {
+	log.Logger = log.Output(zerolog.ConsoleWriter{
+		Out:        os.Stderr,
+		TimeFormat: time.RFC3339Nano,
+		NoColor:    false,
+	}).With().Caller().Logger()
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+}
+
 func usage() {
-	fmt.Fprintf(os.Stderr, usageMessage)
+	fmt.Fprint(os.Stderr, usageMessage)
 	os.Exit(2)
 }
 
@@ -68,7 +79,6 @@ var (
 )
 
 func main() {
-	log.SetPrefix("cindex: ")
 	flag.Usage = usage
 	flag.Parse()
 
@@ -76,7 +86,7 @@ func main() {
 		ix := index.Open(index.File())
 		if *checkFlag {
 			if err := ix.Check(); err != nil {
-				log.Fatal(err)
+				log.Fatal().Err(err).Msg("index check failed")
 			}
 		}
 		for p := range ix.Roots().All() {
@@ -88,10 +98,17 @@ func main() {
 	if *cpuProfile != "" {
 		f, err := os.Create(*cpuProfile)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal().Err(err).Msg("failed to create CPU profile file")
 		}
-		defer f.Close()
-		pprof.StartCPUProfile(f)
+		defer func() {
+			if err := f.Close(); err != nil {
+				log.Error().Err(err).Msg("failed to close CPU profile file")
+			}
+		}()
+
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatal().Err(err).Msg("failed to start CPU profile")
+		}
 		defer pprof.StopCPUProfile()
 	}
 
@@ -128,7 +145,7 @@ func main() {
 		if *checkFlag {
 			ix := index.Open(master)
 			if err := ix.Check(); err != nil {
-				log.Fatal(err)
+				log.Fatal().Err(err).Msg("index check failed")
 			}
 		}
 	}
@@ -139,7 +156,7 @@ func main() {
 	ix.AddRoots(roots)
 	for _, root := range roots {
 		log.Printf("index %s", root)
-		filepath.Walk(root.String(), func(path string, info os.FileInfo, err error) error {
+		walker := func(path string, info os.FileInfo, err error) error {
 			if _, elem := filepath.Split(path); elem != "" {
 				// Skip various temporary or "hidden" files or directories.
 				if elem[0] == '.' || elem[0] == '#' || elem[0] == '~' || elem[len(elem)-1] == '~' {
@@ -160,7 +177,10 @@ func main() {
 				}
 			}
 			return nil
-		})
+		}
+		if err := filepath.Walk(root.String(), walker); err != nil {
+			log.Error().Err(err).Msgf("error walking %v", root)
+		}
 	}
 	log.Printf("flush index")
 	ix.Flush()
@@ -171,16 +191,20 @@ func main() {
 		if *checkFlag {
 			ix := index.Open(file + "~")
 			if err := ix.Check(); err != nil {
-				log.Fatal(err)
+				log.Fatal().Err(err).Msg("index check failed")
 			}
 		}
-		os.Remove(file)
-		os.Rename(file+"~", master)
+		if err := os.Remove(file); err != nil {
+			log.Error().Err(err).Msg("failed to remove old index file")
+		}
+		if err := os.Rename(file+"~", master); err != nil {
+			log.Error().Err(err).Msg("failed to rename new index file")
+		}
 	} else {
 		if *checkFlag {
 			ix := index.Open(file)
 			if err := ix.Check(); err != nil {
-				log.Fatal(err)
+				log.Fatal().Err(err).Msg("index check failed")
 			}
 		}
 	}
@@ -191,5 +215,4 @@ func main() {
 		ix := index.Open(master)
 		ix.PrintStats()
 	}
-	return
 }

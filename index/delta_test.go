@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-type buffer []byte
+// type buffer []byte
 
-func (b *buffer) writeByte(x byte) { *b = append(*b, x) }
-func (b *buffer) write(x []byte)   { *b = append(*b, x...) }
+// func (b *buffer) writeByte(x byte) { *b = append(*b, x) }
+// func (b *buffer) write(x []byte)   { *b = append(*b, x...) }
 
 func TestDelta(t *testing.T) {
 	old := writeVersion
@@ -70,9 +72,7 @@ func TestFileList64(t *testing.T) {
 	w.Flush()
 
 	f := fileList64(vals...)
-	if f != string(b.buf) {
-		t.Errorf("deltaWriter=%x but fileList64=%x", string(b.buf), f)
-	}
+	assert.Equal(t, f, string(b.buf), "fileList64 should match deltaWriter output")
 }
 
 func TestGammaWriter(t *testing.T) {

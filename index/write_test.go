@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 func init() {
@@ -289,7 +291,9 @@ func buildFlushIndex(out string, roots []string, doFlush bool, fileData map[stri
 			name,
 			int64(len(fileData[name])),
 		}
-		ix.Add(name, file)
+		if err := ix.Add(name, file); err != nil {
+			log.Fatal().Err(err).Str("name", name).Msg("failed to add index file")
+		}
 		if doFlush && i == len(files)/2 {
 			ix.flushPost()
 		}
@@ -381,7 +385,9 @@ func TestZip(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ww.Write([]byte(files[i+1]))
+		if _, err := ww.Write([]byte(files[i+1])); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := w.Close(); err != nil {
 		t.Fatal(err)

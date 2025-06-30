@@ -24,7 +24,8 @@ func (ix *Index) Check() error {
 	}()
 
 	// Read all names.
-	for _ = range ix.NamesAt(0, ix.numName).All() {
+	for range ix.NamesAt(0, ix.numName).All() {
+		// do nothing?
 	}
 
 	// Read all posting lists blocks.

@@ -7,11 +7,13 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"runtime/pprof"
+	"time"
 
 	"github.com/google/codesearch/regexp"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 var usageMessage = `usage: cgrep [-c] [-h] [-i] [-l] [-n] [-v] regexp [file...]
@@ -23,8 +25,17 @@ flag parsing convention, they cannot be combined: the option pair -i -n
 cannot be abbreviated to -in.
 `
 
+func init() {
+	log.Logger = log.Output(zerolog.ConsoleWriter{
+		Out:        os.Stderr,
+		TimeFormat: time.RFC3339Nano,
+		NoColor:    false,
+	}).With().Caller().Logger()
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+}
+
 func usage() {
-	fmt.Fprintf(os.Stderr, usageMessage)
+	fmt.Fprint(os.Stderr, usageMessage)
 	os.Exit(2)
 }
 
@@ -34,7 +45,6 @@ var (
 )
 
 func main() {
-	log.SetPrefix("cgrep: ")
 	var g regexp.Grep
 	g.AddFlags()
 	g.AddVFlag()
@@ -50,10 +60,17 @@ func main() {
 	if *cpuProfile != "" {
 		f, err := os.Create(*cpuProfile)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal().Err(err).Msg("failed to create CPU profile file")
 		}
-		defer f.Close()
-		pprof.StartCPUProfile(f)
+		defer func() {
+			if err := f.Close(); err != nil {
+				log.Error().Err(err).Msg("failed to close CPU profile file")
+			}
+		}()
+
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatal().Err(err).Msg("failed to start CPU profile")
+		}
 		defer pprof.StopCPUProfile()
 	}
 
@@ -63,7 +80,7 @@ func main() {
 	}
 	re, err := regexp.Compile(pat)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err).Msg("failed to compile regular expression")
 	}
 	g.Regexp = re
 	if len(args) == 1 {

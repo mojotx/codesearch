@@ -80,7 +80,7 @@ func Merge(dst, src1, src2 string) {
 			name1 = names1.Path()
 			i1++
 		}
-		hi := i1
+		// hi := i1
 
 		// Record range before the shadow.
 		if old < lo {
@@ -101,7 +101,7 @@ func Merge(dst, src1, src2 string) {
 			name2 = names2.Path()
 			i2++
 		}
-		hi = i2
+		hi := i2
 		if lo < hi {
 			map2 = append(map2, idrange{lo, hi, new})
 			new += hi - lo
@@ -172,7 +172,7 @@ func Merge(dst, src1, src2 string) {
 	}
 	if writeVersion == 1 {
 		nameIndexFile.WriteUint(ix.Offset() - start)
-		ix.WriteByte(0)
+		_ = ix.WriteByte(0)
 	}
 
 	var want int
@@ -325,7 +325,7 @@ func (r *postMapReader) load(force bool) {
 		r.trigram, r.count, r.offset = r.ix.postIndexEntry(r.triNum)
 	} else {
 		b := r.block
-		if b == nil || len(b) < 3 || b[0] == 0 && b[1] == 0 && b[2] == 0 {
+		if len(b) < 3 || b[0] == 0 && b[1] == 0 && b[2] == 0 {
 			r.block = r.ix.slice(r.ix.postIndex+r.nextBlock, postBlockSize)
 			r.nextBlock += postBlockSize
 			b = r.block

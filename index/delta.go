@@ -138,7 +138,7 @@ func (w *deltaWriter) writeBits(x uint64) {
 
 func (w *deltaWriter) flushBits() {
 	for w.nb >= 8 {
-		w.out.WriteByte(byte(w.b))
+		_ = w.out.WriteByte(byte(w.b))
 		w.b >>= 8
 		w.nb -= 8
 	}
@@ -147,7 +147,7 @@ func (w *deltaWriter) flushBits() {
 func (w *deltaWriter) Flush() {
 	w.flushBits()
 	if w.nb > 0 {
-		w.out.WriteByte(byte(w.b))
+		_ = w.out.WriteByte(byte(w.b))
 	}
 	w.b = 0
 	w.nb = 0

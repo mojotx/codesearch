@@ -27,7 +27,9 @@ func TestTrivialPosting(t *testing.T) {
 	out := f.Name()
 	buildIndex(out, nil, postFiles)
 	data, _ := os.ReadFile(out)
-	os.WriteFile("/tmp/out", data, 0666)
+	if err := os.WriteFile("/tmp/out", data, 0666); err != nil {
+		t.Errorf("failed to write /tmp/out: %v", err)
+	}
 	ix := Open(out)
 	if l := ix.PostingList(tri(" Co")); !slices.Equal(l, []int{1, 2}) {
 		t.Errorf("PostingList( Co) = %v, want [1 3]", l)
