@@ -69,6 +69,7 @@ const npost = 64 << 20 / 8 // 64 MB worth of post entries
 // Create returns a new IndexWriter that will write the index to file.
 func Create(file string) *IndexWriter {
 	ix := &IndexWriter{
+		LogSkip:   true,
 		trigram:   sparse.NewSet(1 << 24),
 		nameData:  bufCreate(""),
 		nameIndex: bufCreate(""),
@@ -130,8 +131,8 @@ func makePostEntry(trigram uint32, fileid int) postEntry {
 // or if it contains more than maxTextTrigrams distinct trigrams.
 const (
 	maxFileLen      = 1 << 30
-	maxLineLen      = 2000
-	maxTextTrigrams = 20000
+	maxLineLen      = 5000
+	maxTextTrigrams = 40000
 )
 
 // AddRoots adds the given roots to the index's list of roots.
@@ -198,8 +199,7 @@ func (ix *IndexWriter) Add(name string, f io.Reader) error {
 			r, err := file.Open()
 			if err != nil {
 				println("no3", name)
-
-				log.Printf("%s: %v", r, err)
+				log.Error().Err(err).Str("file", file.Name).Any("r", r).Send()
 				continue
 			}
 			ix.add(name+"\x01"+file.Name, r)
@@ -246,25 +246,25 @@ func (ix *IndexWriter) add(name string, f io.Reader) error {
 		}
 		if c == 0 {
 			if ix.LogSkip {
-				log.Printf("%s: contains NUL, ignoring\n", name)
+				log.Warn().Str("name", name).Msg("contains NUL byte, ignoring")
 			}
 			return nil
 		}
 		if !validUTF8((tv>>8)&0xFF, tv&0xFF) {
 			if ix.LogSkip {
-				log.Printf("%s: invalid UTF-8, ignoring\n", name)
+				log.Warn().Str("name", name).Msg("invalid UTF-8 sequence, ignoring")
 			}
 			return nil
 		}
 		if n > maxFileLen {
 			if ix.LogSkip {
-				log.Printf("%s: too long, ignoring\n", name)
+				log.Warn().Str("name", name).Msg("file too long, ignoring")
 			}
 			return nil
 		}
 		if linelen++; linelen > maxLineLen {
 			if ix.LogSkip {
-				log.Printf("%s: very long lines, ignoring\n", name)
+				log.Warn().Str("name", name).Msg("very long lines, ignoring")
 			}
 			return nil
 		}
@@ -274,7 +274,7 @@ func (ix *IndexWriter) add(name string, f io.Reader) error {
 	}
 	if ix.trigram.Len() > maxTextTrigrams {
 		if ix.LogSkip {
-			log.Printf("%s: too many trigrams, probably not text, ignoring\n", name)
+			log.Printf("%s: too many trigrams, probably not text, ignoring", name)
 		}
 		return nil
 	}
