@@ -116,6 +116,15 @@ func home(w http.ResponseWriter, r *http.Request) {
 		zipReader *zip.ReadCloser
 		zipMap    map[string]*zip.File
 	)
+	defer func() {
+		if zipReader != nil {
+			if err := zipReader.Close(); err != nil {
+				log.Warn().Err(err).Str("zip", zipFile).Msg("failed to close zip reader")
+			}
+			zipReader = nil
+			zipMap = nil
+		}
+	}()
 
 	for _, fileid := range post {
 		if g.Limited {

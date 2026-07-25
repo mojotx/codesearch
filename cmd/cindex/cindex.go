@@ -5,6 +5,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -81,9 +82,10 @@ var (
 func main() {
 	flag.Usage = usage
 	flag.Parse()
+	indexFile := index.File()
 
 	if *listFlag {
-		ix := index.Open(index.File())
+		ix := index.Open(indexFile)
 		if *checkFlag {
 			if err := ix.Check(); err != nil {
 				log.Fatal().Err(err).Msg("index check failed")
@@ -113,12 +115,14 @@ func main() {
 	}
 
 	if *resetFlag && flag.NArg() == 0 {
-		os.Remove(index.File())
+		if err := os.Remove(indexFile); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Fatal().Err(err).Str("index", indexFile).Msg("failed to remove index file")
+		}
 		return
 	}
 	var roots []index.Path
 	if flag.NArg() == 0 {
-		ix := index.Open(index.File())
+		ix := index.Open(indexFile)
 		roots = slices.Collect(ix.Roots().All())
 	} else {
 		// Translate arguments to absolute paths so that
@@ -134,10 +138,13 @@ func main() {
 		slices.SortFunc(roots, index.Path.Compare)
 	}
 
-	master := index.File()
+	master := indexFile
 	if _, err := os.Stat(master); err != nil {
-		// Does not exist.
-		*resetFlag = true
+		if errors.Is(err, os.ErrNotExist) {
+			*resetFlag = true
+		} else {
+			log.Fatal().Err(err).Str("index", master).Msg("failed to stat index file")
+		}
 	}
 	file := master
 	if !*resetFlag {
@@ -157,18 +164,18 @@ func main() {
 	for _, root := range roots {
 		log.Printf("index %s", root)
 		walker := func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				log.Printf("%s: %s", path, err)
+				return nil
+			}
 			if _, elem := filepath.Split(path); elem != "" {
 				// Skip various temporary or "hidden" files or directories.
 				if elem[0] == '.' || elem[0] == '#' || elem[0] == '~' || elem[len(elem)-1] == '~' {
-					if info.IsDir() {
+					if info != nil && info.IsDir() {
 						return filepath.SkipDir
 					}
 					return nil
 				}
-			}
-			if err != nil {
-				log.Printf("%s: %s", path, err)
-				return nil
 			}
 			if info != nil && info.Mode()&os.ModeType == 0 {
 				if err := ix.AddFile(path); err != nil {
@@ -187,9 +194,10 @@ func main() {
 
 	if !*resetFlag {
 		log.Printf("merge %s %s", master, file)
-		index.Merge(file+"~", master, file)
+		mergedFile := file + "~"
+		index.Merge(mergedFile, master, file)
 		if *checkFlag {
-			ix := index.Open(file + "~")
+			ix := index.Open(mergedFile)
 			if err := ix.Check(); err != nil {
 				log.Fatal().Err(err).Msg("index check failed")
 			}
@@ -197,7 +205,7 @@ func main() {
 		if err := os.Remove(file); err != nil {
 			log.Error().Err(err).Msg("failed to remove old index file")
 		}
-		if err := os.Rename(file+"~", master); err != nil {
+		if err := os.Rename(mergedFile, master); err != nil {
 			log.Error().Err(err).Msg("failed to rename new index file")
 		}
 	} else {
