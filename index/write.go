@@ -42,13 +42,11 @@ type IndexWriter struct {
 	Zip     bool // index content of zip files
 
 	trigram *sparse.Set // trigrams for the current file
-	buf     [32]byte    // scratch buffer
 
 	roots []Path
 
 	names      *PathWriter
 	nameData   *Buffer // temp file holding list of names
-	nameLen    int     // number of bytes written to nameData
 	nameIndex  *Buffer // temp file holding name index
 	numName    int     // number of names written
 	nameLast   Path    // last name in list
@@ -202,8 +200,12 @@ func (ix *IndexWriter) Add(name string, f io.Reader) error {
 				log.Error().Err(err).Str("file", file.Name).Any("r", r).Send()
 				continue
 			}
-			ix.add(name+"\x01"+file.Name, r)
-			r.Close()
+			if err := ix.add(name+"\x01"+file.Name, r); err != nil {
+				log.Error().Err(err).Str("zip", name).Str("file", file.Name).Msg("failed to index zip entry")
+			}
+			if err := r.Close(); err != nil {
+				log.Warn().Err(err).Str("zip", name).Str("file", file.Name).Msg("failed to close zip entry")
+			}
 		}
 		return err
 	}
@@ -215,7 +217,6 @@ NoZip:
 func (ix *IndexWriter) add(name string, f io.Reader) error {
 	ix.trigram.Reset()
 	var (
-		c       = byte(0)
 		i       = 0
 		buf     = ix.inbuf[:0]
 		tv      = uint32(0)
@@ -238,7 +239,7 @@ func (ix *IndexWriter) add(name string, f io.Reader) error {
 			buf = buf[:n]
 			i = 0
 		}
-		c = buf[i]
+		c := buf[i]
 		i++
 		tv |= uint32(c)
 		if n++; n >= 3 {
@@ -461,8 +462,6 @@ type postChunk struct {
 	next func() (postEntry, bool) // reader for entries after first
 }
 
-const postBuf = 4096
-
 // A postHeap is a heap (priority queue) of postChunks.
 type postHeap struct {
 	ch []*postChunk
@@ -491,21 +490,6 @@ func (h *postHeap) addMem(x []postEntry) {
 	})
 }
 
-// step reads the next entry from ch and saves it in ch.e.
-// It returns false if ch is over.
-func (h *postHeap) step(ch *postChunk) bool {
-	old := ch.e
-	e, ok := ch.next()
-	if !ok {
-		return false
-	}
-	ch.e = e
-	if old >= ch.e {
-		panic("bad sort")
-	}
-	return true
-}
-
 // add adds the chunk to the postHeap.
 // All adds must be called before the first call to next.
 func (h *postHeap) add(next func() (postEntry, bool)) {
@@ -514,11 +498,6 @@ func (h *postHeap) add(next func() (postEntry, bool)) {
 		return
 	}
 	h.push(&postChunk{e, next})
-}
-
-// empty reports whether the postHeap is empty.
-func (h *postHeap) empty() bool {
-	return len(h.ch) == 0
 }
 
 // next returns the next entry from the postHeap.
@@ -595,7 +574,6 @@ type Buffer struct {
 	file    *os.File
 	fileOff int64
 	buf     []byte
-	tmp     [8]byte
 }
 
 // bufCreate creates a new file with the given name and returns a
@@ -687,7 +665,9 @@ func (b *Buffer) Flush() {
 func (b *Buffer) finish() *os.File {
 	b.Flush()
 	f := b.file
-	f.Seek(0, 0)
+	if _, err := f.Seek(0, 0); err != nil {
+		log.Fatal().Err(err).Str("name", b.name).Msg("failed to seek file")
+	}
 	return f
 }
 
@@ -743,7 +723,9 @@ func (b *Buffer) Align(n int) {
 	// not required for reader, but nice for debugging:
 	// align to 16-byte boundary.
 	for b.Offset()%n != 0 {
-		b.WriteByte(0)
+		if err := b.WriteByte(0); err != nil {
+			log.Fatal().Err(err).Str("name", b.name).Msg("failed to write alignment byte")
+		}
 	}
 }
 

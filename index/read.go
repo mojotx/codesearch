@@ -145,7 +145,6 @@ package index
 // [γ-coded]: https://en.wikipedia.org/wiki/Elias_gamma_coding
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"iter"
@@ -314,15 +313,6 @@ func (ix *Index) Names(lo, hi int) iter.Seq[Path] {
 		r.limit = hi - lo - 1
 	}
 	return r.All()
-}
-
-func (ix *Index) str(off int) []byte {
-	str := ix.slice(off, -1)
-	i := bytes.IndexByte(str, '\x00')
-	if i < 0 {
-		ix.corrupt()
-	}
-	return str[:i]
 }
 
 // listAt returns the i'th posting index list entry.
